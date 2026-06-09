@@ -1,5 +1,3 @@
-/* UDP sender for congestion-control contest */
-
 #include <cstdlib>
 #include <iostream>
 
@@ -23,6 +21,10 @@ class DatagrumpSender {
      this is the sequence number that the sender
      next expects will be acknowledged by the receiver */
   uint64_t next_ack_expected_;
+
+  // 最大窗口大小，避免无限大窗口影响服务器性能，实际值从环境变量SENDER_MAX_WINDOW_SIZE里读取
+  // 必须配置环境变量，否则程序会直接退出
+  unsigned int max_window_size_; /* maximum window size */
 
   void send_datagram(const bool after_timeout);
   void got_ack(const uint64_t timestamp, const ContestMessage& msg);
@@ -61,7 +63,8 @@ DatagrumpSender::DatagrumpSender(const char* const host, const char* const port,
     : socket_(),
       controller_(debug),
       sequence_number_(0),
-      next_ack_expected_(0) {
+      next_ack_expected_(0),
+      max_window_size_(15000) {
   /* turn on timestamps when socket receives a datagram */
   socket_.set_timestamps();
 
@@ -104,7 +107,11 @@ void DatagrumpSender::send_datagram(const bool after_timeout) {
 }
 
 bool DatagrumpSender::window_is_open() {
-  return sequence_number_ - next_ack_expected_ < controller_.window_size();
+  unsigned int window_size = controller_.window_size();
+  if (window_size > max_window_size_) {
+    window_size = max_window_size_;
+  }
+  return sequence_number_ - next_ack_expected_ < window_size;
 }
 
 int DatagrumpSender::loop() {
