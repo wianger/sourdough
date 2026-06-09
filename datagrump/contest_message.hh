@@ -1,11 +1,10 @@
 #ifndef CONTEST_MESSAGE_HH
 #define CONTEST_MESSAGE_HH
 
-#include <string>
 #include <cstdint>
+#include <string>
 
-struct ContestMessage
-{
+struct ContestMessage {
   struct Header {
     uint64_t sequence_number;
     uint64_t send_timestamp;
@@ -16,10 +15,10 @@ struct ContestMessage
     uint64_t ack_payload_length;
 
     /* Header for new message */
-    Header( const uint64_t s_sequence_number );
+    Header(const uint64_t s_sequence_number);
 
     /* Parse header from wire */
-    Header( const std::string & str );
+    Header(const std::string& str);
 
     /* Make wire representation of header */
     std::string to_string() const;
@@ -28,11 +27,11 @@ struct ContestMessage
   std::string payload;
 
   /* New message */
-  ContestMessage( const uint64_t s_sequence_number,
-		  const std::string & s_payload );
+  ContestMessage(const uint64_t s_sequence_number,
+                 const std::string& s_payload);
 
   /* Parse incoming datagram from wire */
-  ContestMessage( const std::string & str );
+  ContestMessage(const std::string& str);
 
   /* Fill in the send_timestamp for an outgoing datagram */
   void set_send_timestamp();
@@ -41,8 +40,8 @@ struct ContestMessage
   std::string to_string() const;
 
   /* Transform into an ack of the ContestMessage */
-  void transform_into_ack( const uint64_t sequence_number,
-			   const uint64_t recv_timestamp );
+  void transform_into_ack(const uint64_t sequence_number,
+                          const uint64_t recv_timestamp);
 
   /* Is this message an ack? */
   bool is_ack() const;

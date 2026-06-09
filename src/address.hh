@@ -1,40 +1,40 @@
 #ifndef ADDRESS_HH
 #define ADDRESS_HH
 
+#include <netdb.h>
+#include <netinet/in.h>
+
 #include <string>
 #include <utility>
 
-#include <netinet/in.h>
-#include <netdb.h>
-
 /* Address class for IPv4/IPv6 addresses */
-class Address
-{
-public:
+class Address {
+ public:
   typedef union {
     sockaddr as_sockaddr;
     sockaddr_storage as_sockaddr_storage;
   } raw;
 
-private:
+ private:
   socklen_t size_;
 
   raw addr_;
 
   /* private constructor given ip/host, service/port, and optional hints */
-  Address( const std::string & node, const std::string & service, const addrinfo * hints );
+  Address(const std::string& node, const std::string& service,
+          const addrinfo* hints);
 
-public:
+ public:
   /* constructors */
   Address();
-  Address( const raw & addr, const size_t size );
-  Address( const sockaddr & addr, const size_t size );
+  Address(const raw& addr, const size_t size);
+  Address(const sockaddr& addr, const size_t size);
 
   /* construct by resolving host name and service name */
-  Address( const std::string & hostname, const std::string & service );
+  Address(const std::string& hostname, const std::string& service);
 
   /* construct with numerical IP address and numeral port number */
-  Address( const std::string & ip, const uint16_t port );
+  Address(const std::string& ip, const uint16_t port);
 
   /* accessors */
   std::pair<std::string, uint16_t> ip_port() const;
@@ -43,10 +43,10 @@ public:
   std::string to_string() const;
 
   socklen_t size() const { return size_; }
-  const sockaddr & to_sockaddr() const;
+  const sockaddr& to_sockaddr() const;
 
   /* equality */
-  bool operator==( const Address & other ) const;
+  bool operator==(const Address& other) const;
 };
 
 #endif /* ADDRESS_HH */
