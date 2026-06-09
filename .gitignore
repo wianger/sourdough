@@ -20,3 +20,6 @@ Makefile.in
 /compile
 /datagrump/sender
 /datagrump/receiver
+compile_commands.json
+.cache/
+results/
