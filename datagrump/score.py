@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 @dataclass(frozen=True)
 class TraceConfig:
     name: str
-    trace_file: str
+    trace_dir: str
     loss_rate: float
     rtt_delay_ms: int
     queue_kbytes: float
@@ -56,6 +56,8 @@ class LinkLogStats:
 @dataclass
 class ScoreResult:
     trace: str
+    uplink_trace: str
+    downlink_trace: str
     loss_config: float
     rtt_delay_ms: int
     one_way_delay_ms: int
@@ -77,16 +79,16 @@ class ScoreResult:
 
 
 TRACE_CONFIGS = [
-    TraceConfig("trace1", "trace1.trace", 0.0, 60, 393.75),
-    TraceConfig("trace2", "trace2.trace", 0.0, 80, 1200.0),
-    TraceConfig("trace3", "trace3.trace", 0.0, 40, 300.0),
-    TraceConfig("trace4", "trace4.trace", 0.0, 50, 375.0),
-    TraceConfig("trace5", "trace5.trace", 0.0, 100, 4500.0),
-    TraceConfig("trace6", "trace6.trace", 0.1, 50, 31.25),
-    TraceConfig("trace7", "trace7.trace", 0.0, 20, 9.0),
-    TraceConfig("trace8", "trace8.trace", 0.0, 400, 6000.0),
-    TraceConfig("trace9", "trace9.trace", 0.0, 50, 1562.5),
-    TraceConfig("trace10", "trace10.trace", 0.0, 60, 1500.0),
+    TraceConfig("trace1", "trace1", 0.0, 60, 393.75),
+    TraceConfig("trace2", "trace2", 0.0, 80, 1200.0),
+    TraceConfig("trace3", "trace3", 0.0, 40, 300.0),
+    TraceConfig("trace4", "trace4", 0.0, 50, 375.0),
+    TraceConfig("trace5", "trace5", 0.0, 100, 4500.0),
+    TraceConfig("trace6", "trace6", 0.1, 50, 31.25),
+    TraceConfig("trace7", "trace7", 0.0, 20, 9.0),
+    TraceConfig("trace8", "trace8", 0.0, 400, 6000.0),
+    TraceConfig("trace9", "trace9", 0.0, 50, 1562.5),
+    TraceConfig("trace10", "trace10", 0.0, 60, 1500.0),
 ]
 
 
@@ -108,7 +110,7 @@ def parse_args() -> argparse.Namespace:
         "--trace",
         action="append",
         default=[],
-        help="trace to run, e.g. trace1 or trace1.trace; repeat to run several",
+        help="trace to run, e.g. trace1; repeat to run several",
     )
     parser.add_argument(
         "--skip-run",
@@ -142,14 +144,14 @@ def selected_configs(names: list[str]) -> list[TraceConfig]:
     normalized = set(names)
     picked: list[TraceConfig] = []
     for config in TRACE_CONFIGS:
-        aliases = {config.name, config.trace_file, Path(config.trace_file).stem}
+        aliases = {config.name, config.trace_dir}
         if normalized & aliases:
             picked.append(config)
 
     missing = normalized - {
         alias
         for config in picked
-        for alias in (config.name, config.trace_file, Path(config.trace_file).stem)
+        for alias in (config.name, config.trace_dir)
     }
     if missing:
         raise SystemExit(f"unknown trace name(s): {', '.join(sorted(missing))}")
@@ -157,10 +159,31 @@ def selected_configs(names: list[str]) -> list[TraceConfig]:
     return picked
 
 
+def one_matching_trace_file(trace_dir: Path, suffix: str) -> Path:
+    matches = sorted(path for path in trace_dir.iterdir() if path.suffix == suffix)
+    if not matches:
+        raise SystemExit(f"missing {suffix} trace file under {trace_dir}")
+    if len(matches) > 1:
+        names = ", ".join(path.name for path in matches)
+        raise SystemExit(f"multiple {suffix} trace files under {trace_dir}: {names}")
+    return matches[0]
+
+
+def resolve_trace_paths(config: TraceConfig, traces_dir: Path) -> tuple[Path, Path]:
+    trace_dir = traces_dir / config.trace_dir
+    if not trace_dir.is_dir():
+        raise SystemExit(f"missing trace directory: {trace_dir}")
+
+    uplink_trace = one_matching_trace_file(trace_dir, ".up")
+    downlink_trace = one_matching_trace_file(trace_dir, ".down")
+    return uplink_trace, downlink_trace
+
+
 def run_experiment(
     config: TraceConfig,
     args: argparse.Namespace,
-    trace_path: Path,
+    uplink_trace_path: Path,
+    downlink_trace_path: Path,
     output_dir: Path,
     port: int,
 ) -> None:
@@ -190,8 +213,8 @@ def run_experiment(
             "uplink",
             f"{config.loss_rate:g}",
             "mm-link",
-            str(trace_path),
-            str(trace_path),
+            str(uplink_trace_path),
+            str(downlink_trace_path),
             "--once",
             "--uplink-log=./contest_uplink_log",
             "--downlink-log=./contest_downlink_log",
@@ -325,7 +348,13 @@ def compute_delay_score(
     return delay_inflation, delay_score
 
 
-def score_one(config: TraceConfig, output_dir: Path, graph_bin_ms: int) -> ScoreResult:
+def score_one(
+    config: TraceConfig,
+    uplink_trace_path: Path,
+    downlink_trace_path: Path,
+    output_dir: Path,
+    graph_bin_ms: int,
+) -> ScoreResult:
     stats_text = run_graph(output_dir, graph_bin_ms)
     capacity_mbps, throughput_mbps, queueing_delay_ms = parse_graph_stats(stats_text)
 
@@ -350,6 +379,8 @@ def score_one(config: TraceConfig, output_dir: Path, graph_bin_ms: int) -> Score
 
     return ScoreResult(
         trace=config.name,
+        uplink_trace=str(uplink_trace_path),
+        downlink_trace=str(downlink_trace_path),
         loss_config=config.loss_rate,
         rtt_delay_ms=config.rtt_delay_ms,
         one_way_delay_ms=config.one_way_delay_ms,
@@ -434,22 +465,36 @@ def main() -> None:
     results: list[ScoreResult] = []
 
     for index, config in enumerate(configs, start=1):
-        trace_path = args.traces_dir / config.trace_file
-        if not trace_path.exists():
-            raise SystemExit(f"missing trace file: {trace_path}")
+        uplink_trace_path, downlink_trace_path = resolve_trace_paths(
+            config, args.traces_dir
+        )
 
         output_dir = args.output_dir / config.name
         if not args.skip_run:
             print(
                 f"Running {config.name}: delay={config.one_way_delay_ms}ms, "
-                f"loss={config.loss_rate:g}, queue={config.queue_kbytes:g}KB",
+                f"loss={config.loss_rate:g}, queue={config.queue_kbytes:g}KB, "
+                f"uplink={uplink_trace_path.name}, downlink={downlink_trace_path.name}",
                 flush=True,
             )
-            run_experiment(config, args, trace_path, output_dir, args.base_port + index)
+            run_experiment(
+                config,
+                args,
+                uplink_trace_path,
+                downlink_trace_path,
+                output_dir,
+                args.base_port + index,
+            )
         else:
             print(f"Scoring existing logs for {config.name}", flush=True)
 
-        result = score_one(config, output_dir, args.graph_bin_ms)
+        result = score_one(
+            config,
+            uplink_trace_path,
+            downlink_trace_path,
+            output_dir,
+            args.graph_bin_ms,
+        )
         results.append(result)
         print(format_markdown_row(result), flush=True)
 

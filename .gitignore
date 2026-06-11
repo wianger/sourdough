@@ -22,4 +22,5 @@ Makefile.in
 /datagrump/receiver
 compile_commands.json
 .cache/
-results/
+results*/
+__pycache__/
