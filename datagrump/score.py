@@ -174,8 +174,8 @@ def resolve_trace_paths(config: TraceConfig, traces_dir: Path) -> tuple[Path, Pa
     if not trace_dir.is_dir():
         raise SystemExit(f"missing trace directory: {trace_dir}")
 
-    uplink_trace = one_matching_trace_file(trace_dir, ".up")
-    downlink_trace = one_matching_trace_file(trace_dir, ".down")
+    uplink_trace = one_matching_trace_file(trace_dir, ".down")
+    downlink_trace = one_matching_trace_file(trace_dir, ".up")
     return uplink_trace, downlink_trace
 
 
